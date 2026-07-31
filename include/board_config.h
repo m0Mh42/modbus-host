@@ -16,26 +16,57 @@
 
 /* =========================================================================
  * SPI1 - shared bus for the two ADS1220 thermocouple front-ends
- * Nets: SPI1_SCK, SPI1_MOSI, SPI1_MISO
+ * (Kept for compatibility, unused by CS1237)
  * ========================================================================= */
-#define ADS_SPI_PERIPH        SPI0           /* GD32 SPI peripheral. TODO confirm (SPI0=PA5/6/7) */
+#define ADS_SPI_PERIPH        SPI0           /* GD32 SPI peripheral */
 #define ADS_SPI_RCU           RCU_SPI0       /* must match ADS_SPI_PERIPH */
-#define ADS_SPI_PORT          GPIOA          /* TODO confirm */
-#define ADS_SPI_SCK_PIN       GPIO_PIN_5     /* PA5  - SPI1_SCK  TODO */
-#define ADS_SPI_MISO_PIN      GPIO_PIN_6     /* PA6  - SPI1_MISO TODO */
-#define ADS_SPI_MOSI_PIN      GPIO_PIN_7     /* PA7  - SPI1_MOSI TODO */
+#define ADS_SPI_PORT          GPIOA          
+#define ADS_SPI_SCK_PIN       GPIO_PIN_5     
+#define ADS_SPI_MISO_PIN      GPIO_PIN_6     
+#define ADS_SPI_MOSI_PIN      GPIO_PIN_7     
 
-/* ADS1220 #1 (thermocouple channels 0..3) */
-#define ADS1_CS_PORT          GPIOB          /* TODO */
-#define ADS1_CS_PIN           GPIO_PIN_0     /* ADS1_CS   TODO */
-#define ADS1_DRDY_PORT        GPIOB          /* TODO */
-#define ADS1_DRDY_PIN         GPIO_PIN_1     /* ADS1_DRDY TODO */
+/* ADS1220 #1 */
+#define ADS1_CS_PORT          GPIOB          
+#define ADS1_CS_PIN           GPIO_PIN_0     
+#define ADS1_DRDY_PORT        GPIOB          
+#define ADS1_DRDY_PIN         GPIO_PIN_1     
 
-/* ADS1220 #2 (thermocouple channels 4..7) */
-#define ADS2_CS_PORT          GPIOB          /* TODO */
-#define ADS2_CS_PIN           GPIO_PIN_2     /* ADS2_CS   TODO */
-#define ADS2_DRDY_PORT        GPIOB          /* TODO */
-#define ADS2_DRDY_PIN         GPIO_PIN_10    /* ADS2_DRDY TODO */
+/* ADS1220 #2 */
+#define ADS2_CS_PORT          GPIOB          
+#define ADS2_CS_PIN           GPIO_PIN_2     
+#define ADS2_DRDY_PORT        GPIOB          
+#define ADS2_DRDY_PIN         GPIO_PIN_10    
+
+/* =========================================================================
+ * CS1237 - 8x 24-bit ADCs for thermocouples
+ * Nets: SCLK, DOUT1..DOUT8
+ * ========================================================================= */
+#define CS1237_SCLK_PORT      GPIOA          /* TODO confirm */
+#define CS1237_SCLK_PIN       GPIO_PIN_5     /* TODO confirm */
+
+#define CS1237_DOUT1_PORT     GPIOB          /* TODO confirm */
+#define CS1237_DOUT1_PIN      GPIO_PIN_0     /* TODO confirm */
+
+#define CS1237_DOUT2_PORT     GPIOB          /* TODO confirm */
+#define CS1237_DOUT2_PIN      GPIO_PIN_1     /* TODO confirm */
+
+#define CS1237_DOUT3_PORT     GPIOB          /* TODO confirm */
+#define CS1237_DOUT3_PIN      GPIO_PIN_2     /* TODO confirm */
+
+#define CS1237_DOUT4_PORT     GPIOB          /* TODO confirm */
+#define CS1237_DOUT4_PIN      GPIO_PIN_10    /* TODO confirm */
+
+#define CS1237_DOUT5_PORT     GPIOB          /* TODO confirm */
+#define CS1237_DOUT5_PIN      GPIO_PIN_11    /* TODO confirm */
+
+#define CS1237_DOUT6_PORT     GPIOB          /* TODO confirm */
+#define CS1237_DOUT6_PIN      GPIO_PIN_12    /* TODO confirm */
+
+#define CS1237_DOUT7_PORT     GPIOB          /* TODO confirm */
+#define CS1237_DOUT7_PIN      GPIO_PIN_13    /* TODO confirm */
+
+#define CS1237_DOUT8_PORT     GPIOB          /* TODO confirm */
+#define CS1237_DOUT8_PIN      GPIO_PIN_14    /* TODO confirm */
 
 /* =========================================================================
  * Current transformers - 8x analog inputs straight into on-chip ADC

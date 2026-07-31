@@ -1,10 +1,6 @@
 /**
  * @file register_map.c
  * @brief Modbus data model implementation.
- *
- * Input registers are served from a snapshot refreshed by
- * register_map_update_inputs() so a Modbus read returns a self-consistent set.
- * Holding registers and coils act directly on the actuator drivers.
  */
 #include "register_map.h"
 #include "app_config.h"
@@ -15,6 +11,7 @@
 #include "proximity.h"
 #include "relay.h"
 #include "pwm_output.h"
+#include "pid_control.h"
 
 /* Snapshot of input registers, refreshed each control loop. */
 static uint16_t input_snapshot[0x0026];
@@ -59,22 +56,82 @@ bool register_map_read_input(uint16_t addr, uint16_t *out)
 
 bool register_map_read_holding(uint16_t addr, uint16_t *out)
 {
-    switch (addr) {
-        case REG_HOLD_RELAY_MASK: *out = relay_get_mask();   return true;
-        case REG_HOLD_PWM1_DUTY:  *out = pwm_output_get(0);  return true;
-        case REG_HOLD_PWM2_DUTY:  *out = pwm_output_get(1);  return true;
-        default:                  return false;
+    if (addr == REG_HOLD_RELAY_MASK) { *out = relay_get_mask(); return true; }
+    if (addr == REG_HOLD_PWM1_DUTY)  { *out = pwm_output_get(0); return true; }
+    if (addr == REG_HOLD_PWM2_DUTY)  { *out = pwm_output_get(1); return true; }
+
+    if (addr >= REG_HOLD_PID_MODE_BASE && addr < REG_HOLD_PID_MODE_BASE + NUM_THERMOCOUPLES) {
+        *out = pid_get_mode(addr - REG_HOLD_PID_MODE_BASE); return true;
     }
+    if (addr >= REG_HOLD_PID_SETPOINT_BASE && addr < REG_HOLD_PID_SETPOINT_BASE + NUM_THERMOCOUPLES) {
+        *out = pid_get_setpoint(addr - REG_HOLD_PID_SETPOINT_BASE); return true;
+    }
+    if (addr >= REG_HOLD_PID_KP_BASE && addr < REG_HOLD_PID_KP_BASE + NUM_THERMOCOUPLES) {
+        *out = pid_get_kp(addr - REG_HOLD_PID_KP_BASE); return true;
+    }
+    if (addr >= REG_HOLD_PID_KI_BASE && addr < REG_HOLD_PID_KI_BASE + NUM_THERMOCOUPLES) {
+        *out = pid_get_ki(addr - REG_HOLD_PID_KI_BASE); return true;
+    }
+    if (addr >= REG_HOLD_PID_KD_BASE && addr < REG_HOLD_PID_KD_BASE + NUM_THERMOCOUPLES) {
+        *out = pid_get_kd(addr - REG_HOLD_PID_KD_BASE); return true;
+    }
+    if (addr >= REG_HOLD_PID_DEADZONE_BASE && addr < REG_HOLD_PID_DEADZONE_BASE + NUM_THERMOCOUPLES) {
+        *out = pid_get_deadzone(addr - REG_HOLD_PID_DEADZONE_BASE); return true;
+    }
+    if (addr >= REG_HOLD_TC_OFFSET_BASE && addr < REG_HOLD_TC_OFFSET_BASE + NUM_THERMOCOUPLES) {
+        *out = (uint16_t)thermocouple_get_offset(addr - REG_HOLD_TC_OFFSET_BASE); return true;
+    }
+    if (addr >= REG_HOLD_HEATER_RELAY_BASE && addr < REG_HOLD_HEATER_RELAY_BASE + NUM_THERMOCOUPLES) {
+        *out = pid_get_heater_relay(addr - REG_HOLD_HEATER_RELAY_BASE); return true;
+    }
+    if (addr >= REG_HOLD_BLOWER_RELAY_BASE && addr < REG_HOLD_BLOWER_RELAY_BASE + NUM_THERMOCOUPLES) {
+        *out = pid_get_blower_relay(addr - REG_HOLD_BLOWER_RELAY_BASE); return true;
+    }
+    if (addr >= REG_HOLD_MANUAL_DUTY_BASE && addr < REG_HOLD_MANUAL_DUTY_BASE + NUM_THERMOCOUPLES) {
+        *out = pid_get_manual_duty(addr - REG_HOLD_MANUAL_DUTY_BASE); return true;
+    }
+    
+    return false;
 }
 
 bool register_map_write_holding(uint16_t addr, uint16_t value)
 {
-    switch (addr) {
-        case REG_HOLD_RELAY_MASK: relay_set_mask(value);     return true;
-        case REG_HOLD_PWM1_DUTY:  pwm_output_set(0, value);  return true;
-        case REG_HOLD_PWM2_DUTY:  pwm_output_set(1, value);  return true;
-        default:                  return false;
+    if (addr == REG_HOLD_RELAY_MASK) { relay_set_mask(value); return true; }
+    if (addr == REG_HOLD_PWM1_DUTY)  { pwm_output_set(0, value); return true; }
+    if (addr == REG_HOLD_PWM2_DUTY)  { pwm_output_set(1, value); return true; }
+
+    if (addr >= REG_HOLD_PID_MODE_BASE && addr < REG_HOLD_PID_MODE_BASE + NUM_THERMOCOUPLES) {
+        pid_set_mode(addr - REG_HOLD_PID_MODE_BASE, value); return true;
     }
+    if (addr >= REG_HOLD_PID_SETPOINT_BASE && addr < REG_HOLD_PID_SETPOINT_BASE + NUM_THERMOCOUPLES) {
+        pid_set_setpoint(addr - REG_HOLD_PID_SETPOINT_BASE, value); return true;
+    }
+    if (addr >= REG_HOLD_PID_KP_BASE && addr < REG_HOLD_PID_KP_BASE + NUM_THERMOCOUPLES) {
+        pid_set_kp(addr - REG_HOLD_PID_KP_BASE, value); return true;
+    }
+    if (addr >= REG_HOLD_PID_KI_BASE && addr < REG_HOLD_PID_KI_BASE + NUM_THERMOCOUPLES) {
+        pid_set_ki(addr - REG_HOLD_PID_KI_BASE, value); return true;
+    }
+    if (addr >= REG_HOLD_PID_KD_BASE && addr < REG_HOLD_PID_KD_BASE + NUM_THERMOCOUPLES) {
+        pid_set_kd(addr - REG_HOLD_PID_KD_BASE, value); return true;
+    }
+    if (addr >= REG_HOLD_PID_DEADZONE_BASE && addr < REG_HOLD_PID_DEADZONE_BASE + NUM_THERMOCOUPLES) {
+        pid_set_deadzone(addr - REG_HOLD_PID_DEADZONE_BASE, value); return true;
+    }
+    if (addr >= REG_HOLD_TC_OFFSET_BASE && addr < REG_HOLD_TC_OFFSET_BASE + NUM_THERMOCOUPLES) {
+        thermocouple_set_offset(addr - REG_HOLD_TC_OFFSET_BASE, (int16_t)value); return true;
+    }
+    if (addr >= REG_HOLD_HEATER_RELAY_BASE && addr < REG_HOLD_HEATER_RELAY_BASE + NUM_THERMOCOUPLES) {
+        pid_set_heater_relay(addr - REG_HOLD_HEATER_RELAY_BASE, value); return true;
+    }
+    if (addr >= REG_HOLD_BLOWER_RELAY_BASE && addr < REG_HOLD_BLOWER_RELAY_BASE + NUM_THERMOCOUPLES) {
+        pid_set_blower_relay(addr - REG_HOLD_BLOWER_RELAY_BASE, value); return true;
+    }
+    if (addr >= REG_HOLD_MANUAL_DUTY_BASE && addr < REG_HOLD_MANUAL_DUTY_BASE + NUM_THERMOCOUPLES) {
+        pid_set_manual_duty(addr - REG_HOLD_MANUAL_DUTY_BASE, value); return true;
+    }
+
+    return false;
 }
 
 bool register_map_read_coil(uint16_t addr, bool *out)

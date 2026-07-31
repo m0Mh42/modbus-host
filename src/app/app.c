@@ -23,6 +23,7 @@
 #include "relay.h"
 #include "modbus_rtu.h"
 #include "register_map.h"
+#include "pid_control.h"
 
 void app_init(void)
 {
@@ -38,6 +39,7 @@ void app_init(void)
     /* --- Input drivers / services --- */
     proximity_init();
     thermocouple_init();
+    pid_control_init();
     current_monitor_init();
     analog_input_init();
 
@@ -72,6 +74,7 @@ void app_run(void)
         if ((now - t_ctrl) >= CONTROL_LOOP_PERIOD_MS) {
             t_ctrl = now;
             proximity_task();
+            pid_control_process();
             register_map_update_inputs();
         }
     }

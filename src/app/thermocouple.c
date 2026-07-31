@@ -1,80 +1,100 @@
 /**
  * @file thermocouple.c
- * @brief 8-channel thermocouple service over two ADS1220 devices.
- *
- * Strategy (single-shot, non-blocking round-robin):
- *   - Each task call checks whether the currently-selected channel's device
- *     has data ready. If so it reads the raw code, converts to temperature,
- *     advances to the next channel, points the mux, and starts a conversion.
- *   - Channels 0..3 live on ads[0], 4..7 on ads[1].
- *
- * The raw->temperature conversion here is a PLACEHOLDER linear map. Replace
- * convert_raw_to_c10() with: ADC code -> microvolts -> thermocouple lookup
- * (e.g. type-K polynomial) -> cold-junction compensation.
+ * @brief 8-channel thermocouple service using CS1237.
  */
 #include "thermocouple.h"
 #include "app_config.h"
-#include "ads1220.h"
+#include "ads1220.h" /* Kept per user request, but unused. */
+#include "cs1237.h"
 #include "board_config.h"
+#include <math.h>
 
-static ads1220_t ads[2];
 static int16_t   temp_c10[NUM_THERMOCOUPLES];
 static bool      temp_valid[NUM_THERMOCOUPLES];
-static uint8_t   scan_idx;     /* 0..7, the channel currently converting */
+static int16_t   dc_offset_uv[NUM_THERMOCOUPLES];
 
-/* Map a global thermocouple channel (0..7) to its device + local channel. */
-static ads1220_t *dev_of(uint8_t ch) { return &ads[ch / 4]; }
-static uint8_t    local_of(uint8_t ch) { return ch % 4; }
+/* 3.3V VREF, Gain 128 */
+#define CS1237_VREF 3.3f
+#define TC_GAIN_F   128.0f
+#define TC_OPEN_THRESHOLD 8220000L
 
-/* PLACEHOLDER conversion: ADS1220 full scale (2.048 V ref, gain 1) is
- * +/-2^23 codes. Scale to a temperature in 0.1 C. Replace with real math. */
-static int16_t convert_raw_to_c10(int32_t raw)
-{
-    /* Example: treat code as microvolts (ref/2^23 ~= 0.244 uV/code) then a
-     * naive 41 uV/C type-K slope. This is only to give a non-zero number. */
-    float microvolts = (float)raw * (2048000.0f / 8388608.0f); /* uV */
-    float celsius    = microvolts / 41.0f;                     /* ~type-K */
-    return (int16_t)(celsius * 10.0f);
+static float typeK_tempToVoltage_mV(float t) {
+    static const float c[] = {-0.176004136860e-1, 0.389212049750e-1,
+                              0.185587700320e-4,  -0.994575928740e-7,
+                              0.318409457190e-9,  -0.560728448890e-12,
+                              0.560750590590e-15, -0.320207200030e-18,
+                              0.971511471520e-22, -0.121047212750e-25};
+    const float a0 = 0.118597600000e0;
+    const float a1 = -0.118343200000e-3;
+    const float a2 = 0.126968600000e3;
+    float e = 0.0f, tp = 1.0f;
+    for (uint8_t i = 0; i < 10; i++) {
+        e += c[i] * tp;
+        tp *= t;
+    }
+    e += a0 * expf(a1 * (t - a2) * (t - a2));
+    return e;
 }
 
-static void start_channel(uint8_t ch)
-{
-    ads1220_select_channel(dev_of(ch), local_of(ch));
-    ads1220_start(dev_of(ch));
+static float typeK_voltageToTemp_C(float mv) {
+    float t = 0.0f, v = 1.0f;
+    if (mv < 0.0f) {
+        static const float d[] = {0.0f, 2.5173462e1, -1.1662878e0,
+                                  -1.0833638e0, -8.9773540e-1, -3.7342377e-1,
+                                  -8.6632643e-2, -1.0450598e-2, -5.1920577e-4};
+        for (uint8_t i = 0; i < 9; i++) { t += d[i] * v; v *= mv; }
+    } else if (mv < 20.644f) {
+        static const float d[] = {0.0f, 2.508355e1, 7.860106e-2, -2.503131e-1,
+                                  8.315270e-2, -1.228034e-2, 9.804036e-4, 
+                                  -4.413030e-5, 1.057734e-6, -1.052755e-8};
+        for (uint8_t i = 0; i < 10; i++) { t += d[i] * v; v *= mv; }
+    } else {
+        static const float d[] = {-1.318058e2, 4.830222e1, -1.646031e0,
+                                  5.464731e-2, -9.650715e-4, 8.802193e-6,
+                                  -3.110810e-8};
+        for (uint8_t i = 0; i < 7; i++) { t += d[i] * v; v *= mv; }
+    }
+    return t;
 }
 
 void thermocouple_init(void)
 {
-    /* Device 0 = thermocouples 0..3, device 1 = 4..7. */
-    ads[0].cs_port   = ADS1_CS_PORT;   ads[0].cs_pin   = ADS1_CS_PIN;
-    ads[0].drdy_port = ADS1_DRDY_PORT; ads[0].drdy_pin = ADS1_DRDY_PIN;
-    ads[1].cs_port   = ADS2_CS_PORT;   ads[1].cs_pin   = ADS2_CS_PIN;
-    ads[1].drdy_port = ADS2_DRDY_PORT; ads[1].drdy_pin = ADS2_DRDY_PIN;
-
-    for (int i = 0; i < 2; i++) {
-        bool ok = ads1220_init(&ads[i]);
-        /* Mark this device's channels invalid until the first good read. */
-        for (int c = 0; c < 4; c++) temp_valid[i * 4 + c] = ok ? false : false;
+    cs1237_init();
+    
+    for (uint8_t i = 0; i < NUM_THERMOCOUPLES; i++) {
+        dc_offset_uv[i] = 0;
+        temp_c10[i] = 0;
+        temp_valid[i] = false;
+        
+        cs1237_configure_one(i, CS1237_PGA_128, CS1237_SPEED_40, CS1237_CHANNEL_A | CS1237_REF_EXTERNAL);
     }
-
-    scan_idx = 0;
-    start_channel(scan_idx);
 }
 
 void thermocouple_task(void)
 {
-    /* Only the active channel's device is converting; poll its DRDY. */
-    if (!ads1220_data_ready(dev_of(scan_idx))) {
-        return;     /* not ready yet - stay non-blocking */
+    int32_t raw[8];
+    if (!cs1237_scan_all(raw)) {
+        return; /* timeout, stay non-blocking if possible (scan_all blocks up to timeout though) */
     }
 
-    int32_t raw = ads1220_read_data(dev_of(scan_idx));
-    temp_c10[scan_idx]   = convert_raw_to_c10(raw);
-    temp_valid[scan_idx] = true;   /* TODO: add open-thermocouple detection */
+    float cjTemp = 25.0f; /* TODO: Read real CJC from a DS18B20 or similar */
+    float vCold_mV = typeK_tempToVoltage_mV(cjTemp);
 
-    /* Advance round-robin and kick off the next conversion. */
-    scan_idx = (scan_idx + 1) % NUM_THERMOCOUPLES;
-    start_channel(scan_idx);
+    for (uint8_t i = 0; i < NUM_THERMOCOUPLES; i++) {
+        if (raw[i] > TC_OPEN_THRESHOLD || raw[i] < -TC_OPEN_THRESHOLD) {
+            temp_valid[i] = false;
+            continue;
+        }
+        
+        float uV = (float)raw[i] * (0.5f * CS1237_VREF / TC_GAIN_F) / 8388608.0f * 1e6f;
+        uV += dc_offset_uv[i];
+        
+        float vMeasured_mV = uV / 1000.0f;
+        float t = typeK_voltageToTemp_C(vMeasured_mV + vCold_mV);
+        
+        temp_c10[i] = (int16_t)(t * 10.0f);
+        temp_valid[i] = true;
+    }
 }
 
 int16_t thermocouple_get_temp(uint8_t channel)
@@ -87,4 +107,16 @@ bool thermocouple_is_valid(uint8_t channel)
 {
     if (channel >= NUM_THERMOCOUPLES) return false;
     return temp_valid[channel];
+}
+
+int16_t thermocouple_get_offset(uint8_t channel)
+{
+    if (channel >= NUM_THERMOCOUPLES) return 0;
+    return dc_offset_uv[channel];
+}
+
+void thermocouple_set_offset(uint8_t channel, int16_t offset_uv)
+{
+    if (channel >= NUM_THERMOCOUPLES) return;
+    dc_offset_uv[channel] = offset_uv;
 }

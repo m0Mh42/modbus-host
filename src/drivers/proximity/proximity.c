@@ -33,14 +33,31 @@ void proximity_init(void)
         prox_count[i] = prox_speed[i] = prox_last_ms[i] = 0;
     }
 
-    /* TODO: configure EXTI lines for PROX1/PROX2 (rising edge) and enable the
-     * matching EXTIx_IRQn in the NVIC. From the ISR, call proximity_on_edge().
-     * Example skeleton:
-     *   rcu_periph_clock_enable(RCU_AF);
-     *   gpio_exti_source_select(GPIO_PORT_SOURCE_GPIOC, GPIO_PIN_SOURCE_8);
-     *   exti_init(EXTI_8, EXTI_INTERRUPT, EXTI_TRIG_RISING);
-     *   nvic_irq_enable(EXTI5_9_IRQn, 2, 0);
-     */
+    /* Configure EXTI lines for PROX1/PROX2 (rising edge) */
+    rcu_periph_clock_enable(RCU_AF);
+    
+    /* Assuming PROX1 is PC8 and PROX2 is PC9, map EXTI lines.
+     * Note: If pins change, these hardcoded AFIO source selections
+     * might need adjusting. */
+    gpio_exti_source_select(GPIO_PORT_SOURCE_GPIOC, GPIO_PIN_SOURCE_8);
+    gpio_exti_source_select(GPIO_PORT_SOURCE_GPIOC, GPIO_PIN_SOURCE_9);
+    
+    exti_init(EXTI_8, EXTI_INTERRUPT, EXTI_TRIG_RISING);
+    exti_init(EXTI_9, EXTI_INTERRUPT, EXTI_TRIG_RISING);
+    
+    nvic_irq_enable(EXTI5_9_IRQn, 2, 0);
+}
+
+void EXTI5_9_IRQHandler(void)
+{
+    if(exti_interrupt_flag_get(EXTI_8) != RESET) {
+        exti_interrupt_flag_clear(EXTI_8);
+        proximity_on_edge(PROX_CHANNEL_1);
+    }
+    if(exti_interrupt_flag_get(EXTI_9) != RESET) {
+        exti_interrupt_flag_clear(EXTI_9);
+        proximity_on_edge(PROX_CHANNEL_2);
+    }
 }
 
 void proximity_on_edge(prox_channel_t ch)
