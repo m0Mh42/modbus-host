@@ -145,4 +145,11 @@
 #define MODBUS_DE_PORT        GPIOA
 #define MODBUS_DE_PIN         GPIO_PIN_1     /* TODO confirm */
 
+/* =========================================================================
+ * DS18B20 - Cold Junction Compensation
+ * Nets: DS_ONELINE
+ * ========================================================================= */
+#define DS18B20_PORT          GPIOB
+#define DS18B20_PIN           GPIO_PIN_9
+
 #endif /* BOARD_CONFIG_H */

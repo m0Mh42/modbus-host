@@ -6,60 +6,98 @@
 #include "app_config.h"
 #include "ads1220.h" /* Kept per user request, but unused. */
 #include "cs1237.h"
+#include "ds18b20.h"
 #include "board_config.h"
+#include "hal_time.h"
 #include <math.h>
 
 static int16_t   temp_c10[NUM_THERMOCOUPLES];
 static bool      temp_valid[NUM_THERMOCOUPLES];
 static int16_t   dc_offset_uv[NUM_THERMOCOUPLES];
+static float     current_cjc_temp = 25.0f;
+static uint32_t  last_ds18b20_read_ms = 0;
 
 /* 3.3V VREF, Gain 128 */
 #define CS1237_VREF 3.3f
 #define TC_GAIN_F   128.0f
 #define TC_OPEN_THRESHOLD 8220000L
 
-static float typeK_tempToVoltage_mV(float t) {
-    static const float c[] = {-0.176004136860e-1, 0.389212049750e-1,
-                              0.185587700320e-4,  -0.994575928740e-7,
-                              0.318409457190e-9,  -0.560728448890e-12,
-                              0.560750590590e-15, -0.320207200030e-18,
-                              0.971511471520e-22, -0.121047212750e-25};
-    const float a0 = 0.118597600000e0;
-    const float a1 = -0.118343200000e-3;
-    const float a2 = 0.126968600000e3;
-    float e = 0.0f, tp = 1.0f;
-    for (uint8_t i = 0; i < 10; i++) {
-        e += c[i] * tp;
-        tp *= t;
-    }
-    e += a0 * expf(a1 * (t - a2) * (t - a2));
-    return e;
+/* Type K thermocouple lookup table (mV), ITS-90 standard */
+/* Temperatures from -200C to 1370C in steps of 10C */
+#define TYPE_K_T_MIN -200
+#define TYPE_K_T_MAX 1370
+#define TYPE_K_STEP  10
+#define TYPE_K_ENTRIES 158
+
+static const float typeK_table_mV[TYPE_K_ENTRIES] = {
+    -5.89140f, -5.72972f, -5.55035f, -5.35398f, -5.14123f, -4.91271f, -4.66898f, -4.41062f,
+    -4.13821f, -3.85235f, -3.55363f, -3.24268f, -2.92013f, -2.58662f, -2.24282f, -1.88938f,
+    -1.52695f, -1.15613f, -0.77754f, -0.39185f, 0.01584f, 0.41270f, 0.81396f, 1.21912f,
+    1.62763f, 2.03892f, 2.45231f, 2.86709f, 3.28248f, 3.69772f, 4.11207f, 4.52490f,
+    4.93572f, 5.34424f, 5.75035f, 6.15418f, 6.55606f, 6.95643f, 7.35586f, 7.75496f,
+    8.15431f, 8.55443f, 8.95573f, 9.35853f, 9.76299f, 10.16921f, 10.57717f, 10.98679f,
+    11.39796f, 11.81054f, 12.22441f, 12.63942f, 13.05547f, 13.47246f, 13.89032f, 14.30899f,
+    14.72842f, 15.14856f, 15.56939f, 15.99088f, 16.41298f, 16.83568f, 17.25893f, 17.68270f,
+    18.10695f, 18.53165f, 18.95674f, 19.38218f, 19.80793f, 20.23393f, 20.66013f, 21.08648f,
+    21.51292f, 21.93940f, 22.36587f, 22.79227f, 23.21854f, 23.64464f, 24.07050f, 24.49607f,
+    24.92131f, 25.34615f, 25.77056f, 26.19449f, 26.61788f, 27.04070f, 27.46291f, 27.88446f,
+    28.30531f, 28.72544f, 29.14481f, 29.56339f, 29.98116f, 30.39808f, 30.81413f, 31.22929f,
+    31.64355f, 32.05689f, 32.46929f, 32.88073f, 33.29122f, 33.70073f, 34.10927f, 34.51682f,
+    34.92338f, 35.32895f, 35.73351f, 36.13708f, 36.53964f, 36.94120f, 37.34176f, 37.74130f,
+    38.13984f, 38.53736f, 38.93388f, 39.32937f, 39.72385f, 40.11730f, 40.50972f, 40.90111f,
+    41.29145f, 41.68073f, 42.06895f, 42.45609f, 42.84214f, 43.22709f, 43.61091f, 43.99359f,
+    44.37511f, 44.75544f, 45.13458f, 45.51248f, 45.88913f, 46.26450f, 46.63857f, 47.01131f,
+    47.38269f, 47.75268f, 48.12126f, 48.48840f, 48.85408f, 49.21827f, 49.58095f, 49.94209f,
+    50.30169f, 50.65972f, 51.01617f, 51.37104f, 51.72432f, 52.07601f, 52.42612f, 52.77465f,
+    53.12163f, 53.46709f, 53.81105f, 54.15355f, 54.49465f, 54.83441f,
+};
+
+static float typeK_tempToVoltage_mV(float t_C) {
+    if (t_C <= TYPE_K_T_MIN) return typeK_table_mV[0];
+    if (t_C >= TYPE_K_T_MAX) return typeK_table_mV[TYPE_K_ENTRIES - 1];
+    
+    float idx_f = (t_C - TYPE_K_T_MIN) / TYPE_K_STEP;
+    int idx = (int)idx_f;
+    float frac = idx_f - idx;
+    
+    float v0 = typeK_table_mV[idx];
+    float v1 = typeK_table_mV[idx + 1];
+    
+    return v0 + frac * (v1 - v0);
 }
 
-static float typeK_voltageToTemp_C(float mv) {
-    float t = 0.0f, v = 1.0f;
-    if (mv < 0.0f) {
-        static const float d[] = {0.0f, 2.5173462e1, -1.1662878e0,
-                                  -1.0833638e0, -8.9773540e-1, -3.7342377e-1,
-                                  -8.6632643e-2, -1.0450598e-2, -5.1920577e-4};
-        for (uint8_t i = 0; i < 9; i++) { t += d[i] * v; v *= mv; }
-    } else if (mv < 20.644f) {
-        static const float d[] = {0.0f, 2.508355e1, 7.860106e-2, -2.503131e-1,
-                                  8.315270e-2, -1.228034e-2, 9.804036e-4, 
-                                  -4.413030e-5, 1.057734e-6, -1.052755e-8};
-        for (uint8_t i = 0; i < 10; i++) { t += d[i] * v; v *= mv; }
-    } else {
-        static const float d[] = {-1.318058e2, 4.830222e1, -1.646031e0,
-                                  5.464731e-2, -9.650715e-4, 8.802193e-6,
-                                  -3.110810e-8};
-        for (uint8_t i = 0; i < 7; i++) { t += d[i] * v; v *= mv; }
+static float typeK_voltageToTemp_C(float v_mV) {
+    if (v_mV <= typeK_table_mV[0]) return (float)TYPE_K_T_MIN;
+    if (v_mV >= typeK_table_mV[TYPE_K_ENTRIES - 1]) return (float)TYPE_K_T_MAX;
+    
+    /* Binary search */
+    int low = 0;
+    int high = TYPE_K_ENTRIES - 1;
+    
+    while (low <= high) {
+        int mid = low + (high - low) / 2;
+        if (typeK_table_mV[mid] == v_mV) return (float)(TYPE_K_T_MIN + mid * TYPE_K_STEP);
+        if (typeK_table_mV[mid] < v_mV) {
+            low = mid + 1;
+        } else {
+            high = mid - 1;
+        }
     }
-    return t;
+    
+    /* low is now the index of the first element > v_mV */
+    int idx = low - 1;
+    float v0 = typeK_table_mV[idx];
+    float v1 = typeK_table_mV[idx + 1];
+    float frac = (v_mV - v0) / (v1 - v0);
+    
+    return (float)TYPE_K_T_MIN + (idx + frac) * TYPE_K_STEP;
 }
 
 void thermocouple_init(void)
 {
     cs1237_init();
+    ds18b20_init();
+    ds18b20_start_conversion();
     
     for (uint8_t i = 0; i < NUM_THERMOCOUPLES; i++) {
         dc_offset_uv[i] = 0;
@@ -77,8 +115,17 @@ void thermocouple_task(void)
         return; /* timeout, stay non-blocking if possible (scan_all blocks up to timeout though) */
     }
 
-    float cjTemp = 25.0f; /* TODO: Read real CJC from a DS18B20 or similar */
-    float vCold_mV = typeK_tempToVoltage_mV(cjTemp);
+    uint32_t now = hal_millis();
+    if (now - last_ds18b20_read_ms >= 1000) {
+        float temp;
+        if (ds18b20_read_temp(&temp)) {
+            current_cjc_temp = temp;
+        }
+        ds18b20_start_conversion();
+        last_ds18b20_read_ms = now;
+    }
+
+    float vCold_mV = typeK_tempToVoltage_mV(current_cjc_temp);
 
     for (uint8_t i = 0; i < NUM_THERMOCOUPLES; i++) {
         if (raw[i] > TC_OPEN_THRESHOLD || raw[i] < -TC_OPEN_THRESHOLD) {
