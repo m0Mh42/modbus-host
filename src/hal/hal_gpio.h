@@ -9,7 +9,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-typedef enum {
+typedef enum
+{
     HAL_GPIO_INPUT,
     HAL_GPIO_INPUT_PULLUP,
     HAL_GPIO_OUTPUT,

@@ -20,4 +20,10 @@ void modbus_init(uint8_t slave_address, uint32_t baudrate);
 /** Poll the Modbus server once (call frequently from the super-loop). */
 void modbus_task(void);
 
+/** Dynamically update the active Modbus slave address. */
+void modbus_set_slave_address(uint8_t slave_address);
+
+/** Get the currently active Modbus slave address. */
+uint8_t modbus_get_slave_address(void);
+
 #endif /* MODBUS_RTU_H */

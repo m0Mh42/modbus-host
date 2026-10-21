@@ -1,0 +1,5 @@
+Current Transformer Turns Ratio: 2375:1 (2500:1 or 2000:1)
+CT Floating Point Presicion: 2 floating point
+
+
+Toggle hardware or software modbus address usage using the 4th pin on dip switch modbus address selector

@@ -13,9 +13,9 @@
 void hal_adc_init(void)
 {
     /* ADC clock must be <= 14 MHz (GD32F303): derive from APB2 with a divider.
-     * Adjust RCU_CKADC_CKAPB2_DIV* to match your system clock. */
+     * APB2 is 120MHz, DIV12 gives 10MHz (DIV8 gave 15MHz, exceeding 14MHz max). */
     rcu_periph_clock_enable(RCU_ADC0);
-    rcu_adc_clock_config(RCU_CKADC_CKAPB2_DIV8);
+    rcu_adc_clock_config(RCU_CKADC_CKAPB2_DIV12);
 
     adc_deinit(ADC0);
 
@@ -34,19 +34,31 @@ void hal_adc_init(void)
     adc_enable(ADC0);
 
     /* Self-calibration (must run after enable + short stabilization). */
-    for (volatile int i = 0; i < 10000; i++) { }   /* ~stabilization delay */
+    for (volatile int i = 0; i < 10000; i++)
+    {
+    } /* ~stabilization delay */
     adc_calibration_enable(ADC0);
+    adc_enable(ADC0);
 }
 
 uint16_t hal_adc_read(uint8_t channel)
 {
+    /* Clear any stale end-of-conversion flag before starting new conversion */
+    adc_flag_clear(ADC0, ADC_FLAG_EOC);
+
     /* Program the single regular channel with a generous sample time. */
     adc_regular_channel_config(ADC0, 0U, channel, ADC_SAMPLETIME_55POINT5);
 
     /* Software-trigger one conversion and wait for end-of-conversion. */
     adc_software_trigger_enable(ADC0, ADC_REGULAR_CHANNEL);
-    while (adc_flag_get(ADC0, ADC_FLAG_EOC) == RESET) { }
+
+    uint32_t timeout = 100000U;
+    while ((adc_flag_get(ADC0, ADC_FLAG_EOC) == RESET) && --timeout)
+    {
+    }
+
+    uint16_t val = adc_regular_data_read(ADC0);
     adc_flag_clear(ADC0, ADC_FLAG_EOC);
 
-    return (uint16_t)adc_regular_data_read(ADC0);
+    return val;
 }
