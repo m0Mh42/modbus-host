@@ -494,6 +494,17 @@ void test_fault_ack_and_clear_registers_and_coils(void)
     TEST_ASSERT_FALSE(coil_ack);
 }
 
+void test_name_registers_unmapped(void)
+{
+    uint16_t val = 0;
+    /* Former name register space 0x0210..0x02DF must return false on read and write */
+    for (uint16_t addr = 0x0210; addr <= 0x02DF; addr++)
+    {
+        TEST_ASSERT_FALSE(register_map_read_holding(addr, &val));
+        TEST_ASSERT_FALSE(register_map_write_holding(addr, 0x1234));
+    }
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -505,5 +516,6 @@ int main(void)
     RUN_TEST(test_pwm_pid_registers);
     RUN_TEST(test_pwm_pid_closed_loop_execution);
     RUN_TEST(test_fault_ack_and_clear_registers_and_coils);
+    RUN_TEST(test_name_registers_unmapped);
     return UNITY_END();
 }

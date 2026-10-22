@@ -12,13 +12,12 @@
 #include <stdbool.h>
 
 #define NV_CONFIG_MAGIC 0x54484552u /* ASCII 'THER' */
-#define NV_CONFIG_VERSION 7
+#define NV_CONFIG_VERSION 9
 
 #define FLASH_EEPROM_PAGE_ADDR 0x0803F800u /* Page 127 of 256KB Flash */
 #define FLASH_PAGE_SIZE 2048u              /* 2 KB */
 
 #define NUM_PID_CHANNELS 8
-#define NV_NAME_MAX_LEN 32 /* 32 bytes: supports up to 15-31 UTF-8 chars (Persian/Unicode) + null */
 
 typedef struct
 {
@@ -92,12 +91,6 @@ typedef struct
     /* PID configuration (8 channels) */
     nv_pid_cfg_t pid[NUM_PID_CHANNELS];
 
-    /* Names (null-terminated UTF-8 / ASCII strings, max 32 bytes including null) */
-    char node_name[NV_NAME_MAX_LEN];
-    char zone_name[NUM_PID_CHANNELS][NV_NAME_MAX_LEN];
-    char ain_name[2][NV_NAME_MAX_LEN];
-    char pwm_name[2][NV_NAME_MAX_LEN];
-
     uint32_t crc32; /* CRC32 of preceding fields */
 } __attribute__((packed)) nv_config_t;
 
@@ -140,17 +133,5 @@ uint16_t flash_eeprom_get_faults(void);
 
 /** Clear EEPROM fault flags. */
 void flash_eeprom_clear_faults(void);
-
-/** Name getters (returns null-terminated string) */
-const char *flash_eeprom_get_node_name(void);
-const char *flash_eeprom_get_zone_name(uint8_t ch);
-const char *flash_eeprom_get_ain_name(uint8_t ch);
-const char *flash_eeprom_get_pwm_name(uint8_t ch);
-
-/** Name setters (copies up to 31 bytes, null-terminated, marks dirty) */
-void flash_eeprom_set_node_name(const char *name);
-void flash_eeprom_set_zone_name(uint8_t ch, const char *name);
-void flash_eeprom_set_ain_name(uint8_t ch, const char *name);
-void flash_eeprom_set_pwm_name(uint8_t ch, const char *name);
 
 #endif /* FLASH_EEPROM_H */

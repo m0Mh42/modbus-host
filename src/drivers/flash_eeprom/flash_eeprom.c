@@ -109,16 +109,6 @@ static void load_factory_defaults(nv_config_t *cfg)
         cfg->pid[ch].fail_safe_duty = 0;
     }
 
-    snprintf(cfg->node_name, sizeof(cfg->node_name), "Node-1");
-    for (uint8_t ch = 0; ch < NUM_PID_CHANNELS; ch++)
-    {
-        snprintf(cfg->zone_name[ch], sizeof(cfg->zone_name[ch]), "Zone-%u", (unsigned)(ch + 1));
-    }
-    snprintf(cfg->ain_name[0], sizeof(cfg->ain_name[0]), "AIN-1");
-    snprintf(cfg->ain_name[1], sizeof(cfg->ain_name[1]), "AIN-2");
-    snprintf(cfg->pwm_name[0], sizeof(cfg->pwm_name[0]), "PWM-1");
-    snprintf(cfg->pwm_name[1], sizeof(cfg->pwm_name[1]), "PWM-2");
-
     size_t payload_len = sizeof(nv_config_t) - sizeof(uint32_t);
     cfg->crc32 = calc_crc32((const uint8_t *)cfg, payload_len);
 }
@@ -262,71 +252,4 @@ uint16_t flash_eeprom_get_faults(void)
 void flash_eeprom_clear_faults(void)
 {
     eeprom_faults = 0;
-}
-
-const char *flash_eeprom_get_node_name(void)
-{
-    return active_cfg.node_name;
-}
-
-const char *flash_eeprom_get_zone_name(uint8_t ch)
-{
-    if (ch < NUM_PID_CHANNELS)
-    {
-        return active_cfg.zone_name[ch];
-    }
-    return "";
-}
-
-const char *flash_eeprom_get_ain_name(uint8_t ch)
-{
-    if (ch < 2)
-    {
-        return active_cfg.ain_name[ch];
-    }
-    return "";
-}
-
-const char *flash_eeprom_get_pwm_name(uint8_t ch)
-{
-    if (ch < 2)
-    {
-        return active_cfg.pwm_name[ch];
-    }
-    return "";
-}
-
-void flash_eeprom_set_node_name(const char *name)
-{
-    if (!name)
-        return;
-    snprintf(active_cfg.node_name, sizeof(active_cfg.node_name), "%s", name);
-    flash_eeprom_mark_dirty();
-}
-
-void flash_eeprom_set_zone_name(uint8_t ch, const char *name)
-{
-    if (ch < NUM_PID_CHANNELS && name)
-    {
-        snprintf(active_cfg.zone_name[ch], sizeof(active_cfg.zone_name[ch]), "%s", name);
-        flash_eeprom_mark_dirty();
-    }
-}
-
-void flash_eeprom_set_ain_name(uint8_t ch, const char *name)
-{
-    if (ch < 2 && name)
-    {
-        snprintf(active_cfg.ain_name[ch], sizeof(active_cfg.ain_name[ch]), "%s", name);
-        flash_eeprom_mark_dirty();
-    }
-}
-
-void flash_eeprom_set_pwm_name(uint8_t ch, const char *name)
-{
-    if (ch < 2 && name)
-    {
-        snprintf(active_cfg.pwm_name[ch], sizeof(active_cfg.pwm_name[ch]), "%s", name);
-        flash_eeprom_mark_dirty();
-    }
 }

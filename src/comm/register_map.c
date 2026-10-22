@@ -18,40 +18,6 @@
 #include "hal_clock.h"
 #include <string.h>
 
-static uint16_t pack_string_reg(const char *str, uint8_t reg_idx)
-{
-    if (!str)
-        return 0;
-    size_t len = strlen(str);
-    size_t idx0 = (size_t)reg_idx * 2;
-    size_t idx1 = (size_t)reg_idx * 2 + 1;
-    uint8_t b0 = (idx0 < len) ? (uint8_t)str[idx0] : 0;
-    uint8_t b1 = (idx1 < len) ? (uint8_t)str[idx1] : 0;
-    return ((uint16_t)b0 << 8) | (uint16_t)b1;
-}
-
-static void unpack_string_reg(char *buf, size_t max_buf_len, uint8_t reg_idx, uint16_t value)
-{
-    if (!buf || max_buf_len < 2)
-        return;
-    if (reg_idx == 0)
-    {
-        memset(buf, 0, max_buf_len);
-    }
-    size_t idx0 = reg_idx * 2;
-    size_t idx1 = reg_idx * 2 + 1;
-    if (idx0 < max_buf_len - 1)
-    {
-        buf[idx0] = (char)((value >> 8) & 0xFF);
-    }
-    if (idx1 < max_buf_len - 1)
-    {
-        buf[idx1] = (char)(value & 0xFF);
-    }
-    buf[max_buf_len - 1] = '\0';
-    flash_eeprom_mark_dirty();
-}
-
 /* Snapshot of input registers, refreshed each control loop. */
 static uint16_t input_snapshot[0x0040];
 static uint16_t machine_run_state = 0; /* 0=Stop, 1=Run */
@@ -393,34 +359,6 @@ bool register_map_read_holding(uint16_t addr, uint16_t *out)
         return true;
     }
 
-    /* Names (UTF-8 / Persian supported) */
-    if (addr >= REG_HOLD_NAME_NODE_BASE && addr < REG_HOLD_NAME_NODE_BASE + REG_HOLD_NAME_REGS_PER_NAME)
-    {
-        *out = pack_string_reg(flash_eeprom_get_node_name(), addr - REG_HOLD_NAME_NODE_BASE);
-        return true;
-    }
-    if (addr >= REG_HOLD_NAME_ZONE_BASE && addr < REG_HOLD_NAME_ZONE_BASE + (NUM_THERMOCOUPLES * REG_HOLD_NAME_REGS_PER_NAME))
-    {
-        uint8_t ch = (addr - REG_HOLD_NAME_ZONE_BASE) / REG_HOLD_NAME_REGS_PER_NAME;
-        uint8_t reg_idx = (addr - REG_HOLD_NAME_ZONE_BASE) % REG_HOLD_NAME_REGS_PER_NAME;
-        *out = pack_string_reg(flash_eeprom_get_zone_name(ch), reg_idx);
-        return true;
-    }
-    if (addr >= REG_HOLD_NAME_AIN_BASE && addr < REG_HOLD_NAME_AIN_BASE + (2 * REG_HOLD_NAME_REGS_PER_NAME))
-    {
-        uint8_t ch = (addr - REG_HOLD_NAME_AIN_BASE) / REG_HOLD_NAME_REGS_PER_NAME;
-        uint8_t reg_idx = (addr - REG_HOLD_NAME_AIN_BASE) % REG_HOLD_NAME_REGS_PER_NAME;
-        *out = pack_string_reg(flash_eeprom_get_ain_name(ch), reg_idx);
-        return true;
-    }
-    if (addr >= REG_HOLD_NAME_PWM_BASE && addr < REG_HOLD_NAME_PWM_BASE + (2 * REG_HOLD_NAME_REGS_PER_NAME))
-    {
-        uint8_t ch = (addr - REG_HOLD_NAME_PWM_BASE) / REG_HOLD_NAME_REGS_PER_NAME;
-        uint8_t reg_idx = (addr - REG_HOLD_NAME_PWM_BASE) % REG_HOLD_NAME_REGS_PER_NAME;
-        *out = pack_string_reg(flash_eeprom_get_pwm_name(ch), reg_idx);
-        return true;
-    }
-
     /* PWM PID Configuration Registers */
     if (addr == REG_HOLD_PWM1_PID_MODE) { *out = pwm_pid_get_mode(0); return true; }
     if (addr == REG_HOLD_PWM1_PID_SRC) { *out = pwm_pid_get_src(0); return true; }
@@ -683,38 +621,6 @@ bool register_map_write_holding(uint16_t addr, uint16_t value)
     if (addr >= REG_HOLD_PID_ALARM_LOW_BASE && addr < REG_HOLD_PID_ALARM_LOW_BASE + NUM_THERMOCOUPLES)
     {
         pid_set_alarm_low(addr - REG_HOLD_PID_ALARM_LOW_BASE, (int16_t)value);
-        return true;
-    }
-
-    /* Names (UTF-8 / Persian supported) */
-    if (addr >= REG_HOLD_NAME_NODE_BASE && addr < REG_HOLD_NAME_NODE_BASE + REG_HOLD_NAME_REGS_PER_NAME)
-    {
-        nv_config_t *cfg = flash_eeprom_get_mutable();
-        unpack_string_reg(cfg->node_name, sizeof(cfg->node_name), addr - REG_HOLD_NAME_NODE_BASE, value);
-        return true;
-    }
-    if (addr >= REG_HOLD_NAME_ZONE_BASE && addr < REG_HOLD_NAME_ZONE_BASE + (NUM_THERMOCOUPLES * REG_HOLD_NAME_REGS_PER_NAME))
-    {
-        uint8_t ch = (addr - REG_HOLD_NAME_ZONE_BASE) / REG_HOLD_NAME_REGS_PER_NAME;
-        uint8_t reg_idx = (addr - REG_HOLD_NAME_ZONE_BASE) % REG_HOLD_NAME_REGS_PER_NAME;
-        nv_config_t *cfg = flash_eeprom_get_mutable();
-        unpack_string_reg(cfg->zone_name[ch], sizeof(cfg->zone_name[ch]), reg_idx, value);
-        return true;
-    }
-    if (addr >= REG_HOLD_NAME_AIN_BASE && addr < REG_HOLD_NAME_AIN_BASE + (2 * REG_HOLD_NAME_REGS_PER_NAME))
-    {
-        uint8_t ch = (addr - REG_HOLD_NAME_AIN_BASE) / REG_HOLD_NAME_REGS_PER_NAME;
-        uint8_t reg_idx = (addr - REG_HOLD_NAME_AIN_BASE) % REG_HOLD_NAME_REGS_PER_NAME;
-        nv_config_t *cfg = flash_eeprom_get_mutable();
-        unpack_string_reg(cfg->ain_name[ch], sizeof(cfg->ain_name[ch]), reg_idx, value);
-        return true;
-    }
-    if (addr >= REG_HOLD_NAME_PWM_BASE && addr < REG_HOLD_NAME_PWM_BASE + (2 * REG_HOLD_NAME_REGS_PER_NAME))
-    {
-        uint8_t ch = (addr - REG_HOLD_NAME_PWM_BASE) / REG_HOLD_NAME_REGS_PER_NAME;
-        uint8_t reg_idx = (addr - REG_HOLD_NAME_PWM_BASE) % REG_HOLD_NAME_REGS_PER_NAME;
-        nv_config_t *cfg = flash_eeprom_get_mutable();
-        unpack_string_reg(cfg->pwm_name[ch], sizeof(cfg->pwm_name[ch]), reg_idx, value);
         return true;
     }
 

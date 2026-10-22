@@ -113,13 +113,6 @@
 #define REG_HOLD_PID_ALARM_HIGH_BASE 0x01F8 /* High alarm threshold, 0.1 C */
 #define REG_HOLD_PID_ALARM_LOW_BASE 0x0200  /* Low alarm threshold, 0.1 C */
 
-/* Name Holding Registers (Packed UTF-8 / ASCII, 2 characters per 16-bit register, big-endian) */
-#define REG_HOLD_NAME_REGS_PER_NAME 16 /* 16 registers (32 bytes) per name slot (Persian/UTF-8 supported) */
-#define REG_HOLD_NAME_NODE_BASE 0x0210 /* 16 registers (32 bytes) for Node Name */
-#define REG_HOLD_NAME_ZONE_BASE 0x0220 /* 8 zones x 16 registers = 128 registers (32 bytes each) */
-#define REG_HOLD_NAME_AIN_BASE 0x02A0  /* 2 inputs x 16 registers = 32 registers (32 bytes each) */
-#define REG_HOLD_NAME_PWM_BASE 0x02C0  /* 2 outputs x 16 registers = 32 registers (32 bytes each) */
-
 /* PWM PID Configuration Holding Registers (PWM1 & PWM2) */
 #define REG_HOLD_PWM1_PID_MODE 0x02E0     /* 0=Manual, 1=Auto PID */
 #define REG_HOLD_PWM1_PID_SRC 0x02E1      /* Feedback src: 0=Line Speed, 1=AIN1, 2=AIN2, 3=PROX1, 4=PROX2, 5..12=TC1..TC8 */
